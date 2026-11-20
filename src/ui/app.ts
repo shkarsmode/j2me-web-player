@@ -5,7 +5,10 @@ import { DEFAULT_KEYMAP, KEY_HELP, physicalCode } from '../player/keymap';
 import { type GameSummary, deleteGame, gameId, listGames, loadGame, saveGame, touchGame } from '../player/library';
 import { GamePlayer, inspectJar } from '../player/player';
 import { h, toast } from './dom';
+import { initLocale, tr } from '../i18n';
 import { TouchControls } from './touch';
+
+initLocale();
 
 const TOUCH_PREF_KEY = 'j2me-web-player:touch-controls';
 
@@ -43,9 +46,9 @@ export class App {
     const dropzone = h(
       'div',
       { class: 'dropzone' },
-      h('button', { class: 'btn primary', text: 'Открыть .jar', on: { click: () => fileInput.click() } }),
-      h('div', { text: 'или перетащи файл игры сюда' }),
-      h('small', { text: 'Файл не загружается на сервер — игра и сохранения остаются только в этом браузере.' }),
+      h('button', { class: 'btn primary', text: tr('open_jar'), on: { click: () => fileInput.click() } }),
+      h('div', { text: tr('drop_hint') }),
+      h('small', { text: tr('privacy_hint') }),
       fileInput,
     );
     for (const type of ['dragenter', 'dragover'] as const) {
@@ -72,10 +75,10 @@ export class App {
           'header',
           { class: 'brand' },
           h('img', { attrs: { src: '/icon.svg', alt: '' } }),
-          h('div', {}, h('h1', { text: 'J2ME Web Player' }), h('p', { text: 'Java-игры с кнопочных телефонов — в браузере на ПК и телефоне' })),
+          h('div', {}, h('h1', { text: 'J2ME Web Player' }), h('p', { text: tr('tagline') })),
         ),
         dropzone,
-        h('h2', { class: 'section-title', text: 'Мои игры' }),
+        h('h2', { class: 'section-title', text: tr('my_games') }),
         list,
       ),
     );
@@ -90,7 +93,7 @@ export class App {
       /* IndexedDB unavailable (private mode) */
     }
     if (!games.length) {
-      list.replaceChildren(h('p', { class: 'empty', text: 'Пока пусто. Открой .jar-файл, и игра появится здесь.' }));
+      list.replaceChildren(h('p', { class: 'empty', text: tr('empty_hint') }));
       return;
     }
     list.replaceChildren(
@@ -106,7 +109,7 @@ export class App {
             h('button', {
               class: 'btn icon danger',
               text: '✕',
-              attrs: { title: 'Удалить из списка', 'aria-label': 'Удалить' },
+              attrs: { title: tr('delete_title'), 'aria-label': tr('delete_title') },
               on: {
                 click: async () => {
                   await deleteGame(game.id);
@@ -114,7 +117,7 @@ export class App {
                 },
               },
             }),
-            h('button', { class: 'btn primary', text: 'Играть', on: { click: () => void this.playStored(game.id) } }),
+            h('button', { class: 'btn primary', text: tr('play'), on: { click: () => void this.playStored(game.id) } }),
           ),
         ),
       ),
@@ -141,14 +144,14 @@ export class App {
       }).catch(() => undefined);
       this.play(bytes, file.name);
     } catch (e) {
-      toast(`Не получилось открыть файл: ${e instanceof Error ? e.message : e}`);
+      toast(`${tr('toast_cannot_open')}${e instanceof Error ? e.message : e}`);
     }
   }
 
   private async playStored(id: string): Promise<void> {
     const record = await loadGame(id);
     if (!record) {
-      toast('Игра не найдена');
+      toast(tr('toast_not_found'));
       return;
     }
     void touchGame(id);
@@ -164,7 +167,7 @@ export class App {
     try {
       player = new GamePlayer(bytes, fileName, { onHalt: (reason, message) => this.showHalt(reason, message, bytes, fileName) });
     } catch (e) {
-      toast(`Не получилось запустить игру: ${e instanceof Error ? e.message : e}`);
+      toast(`${tr('toast_cannot_start')}${e instanceof Error ? e.message : e}`);
       return;
     }
     this.player = player;
@@ -194,13 +197,13 @@ export class App {
     const touchBtn = h('button', {
       class: 'btn icon',
       text: '🎮',
-      attrs: { title: 'Экранные кнопки', 'aria-label': 'Экранные кнопки' },
+      attrs: { title: tr('onscreen_keys'), 'aria-label': tr('onscreen_keys') },
       on: { click: () => setTouch(!view.classList.contains('touch'), true) },
     });
     const fullscreenBtn = h('button', {
       class: 'btn icon',
       text: '⛶',
-      attrs: { title: 'Полный экран', 'aria-label': 'Полный экран' },
+      attrs: { title: tr('fullscreen'), 'aria-label': tr('fullscreen') },
       on: {
         click: () => {
           if (document.fullscreenElement) void document.exitFullscreen();
@@ -213,9 +216,9 @@ export class App {
       h(
         'div',
         { class: 'player-bar' },
-        h('button', { class: 'btn icon', text: '←', attrs: { title: 'К списку игр', 'aria-label': 'Назад' }, on: { click: () => void this.showLibrary() } }),
+        h('button', { class: 'btn icon', text: '←', attrs: { title: tr('back_to_list'), 'aria-label': tr('back_label') }, on: { click: () => void this.showLibrary() } }),
         h('div', { class: 'player-title', text: player.info.name }),
-        h('button', { class: 'btn icon', text: '⌨', attrs: { title: 'Управление', 'aria-label': 'Управление' }, on: { click: () => this.showKeys(stage, player) } }),
+        h('button', { class: 'btn icon', text: '⌨', attrs: { title: tr('controls'), 'aria-label': tr('controls') }, on: { click: () => this.showKeys(stage, player) } }),
         touchBtn,
         fullscreenBtn,
       ),
@@ -292,9 +295,9 @@ export class App {
       h(
         'div',
         { class: 'overlay-card' },
-        h('h2', { text: 'Управление' }),
+        h('h2', { text: tr('controls') }),
         h('div', { class: 'keys' }, ...rows.flatMap(([key, action]) => [h('kbd', { text: key }), h('span', { text: action })])),
-        h('div', { class: 'row' }, h('button', { class: 'btn primary', text: 'Понятно', on: { click: () => overlay.remove() } })),
+        h('div', { class: 'row' }, h('button', { class: 'btn primary', text: tr('got_it'), on: { click: () => overlay.remove() } })),
       ),
     );
     stage.append(overlay);
@@ -310,13 +313,13 @@ export class App {
         h(
           'div',
           { class: 'overlay-card' },
-          h('h2', { text: reason === 'exit' ? 'Игра закрылась' : 'Игра упала' }),
+          h('h2', { text: reason === 'exit' ? tr('game_exited') : tr('game_crashed') }),
           reason === 'error' && message ? h('pre', { text: message }) : null,
           h(
             'div',
             { class: 'row' },
-            h('button', { class: 'btn', text: 'К списку', on: { click: () => void this.showLibrary() } }),
-            h('button', { class: 'btn primary', text: 'Запустить снова', on: { click: () => this.play(bytes, fileName) } }),
+            h('button', { class: 'btn', text: tr('to_list'), on: { click: () => void this.showLibrary() } }),
+            h('button', { class: 'btn primary', text: tr('restart'), on: { click: () => this.play(bytes, fileName) } }),
           ),
         ),
       ),

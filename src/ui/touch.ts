@@ -2,6 +2,7 @@ import type { InputManager } from '../player/input';
 import type { GamePreset } from '../player/presets';
 import { KEY_DOWN, KEY_FIRE, KEY_LEFT, KEY_POUND, KEY_RIGHT, KEY_SOFT_LEFT, KEY_SOFT_RIGHT, KEY_STAR, KEY_UP } from '../platform/keys';
 import { h } from './dom';
+import { tr } from '../i18n';
 
 function buzz() {
   try {
@@ -24,7 +25,7 @@ export class TouchControls {
   ) {
     const dpad = h(
       'div',
-      { class: 'dpad', attrs: { 'aria-label': 'Джойстик' } },
+      { class: 'dpad', attrs: { 'aria-label': tr('joystick') } },
       h('span', { class: 'dpad-arrow up' }),
       h('span', { class: 'dpad-arrow right' }),
       h('span', { class: 'dpad-arrow down' }),
@@ -42,7 +43,7 @@ export class TouchControls {
     const keypadToggle = h('button', {
       class: 'touch-btn small',
       text: '123',
-      attrs: { 'aria-label': 'Цифровая клавиатура' },
+      attrs: { 'aria-label': tr('numpad') },
       on: {
         click: () => {
           this.keypad.toggleAttribute('hidden');
@@ -56,13 +57,13 @@ export class TouchControls {
     this.left = h(
       'div',
       { class: 'touch-panel touch-left' },
-      h('div', { class: 'touch-row' }, this.button('◀ Софт', KEY_SOFT_LEFT, 'soft'), keypadToggle),
+      h('div', { class: 'touch-row' }, this.button(tr('soft_left'), KEY_SOFT_LEFT, 'soft'), keypadToggle),
       dpad,
     );
     this.right = h(
       'div',
       { class: 'touch-panel touch-right' },
-      h('div', { class: 'touch-row end' }, this.button('Софт ▶', KEY_SOFT_RIGHT, 'soft')),
+      h('div', { class: 'touch-row end' }, this.button(tr('soft_right'), KEY_SOFT_RIGHT, 'soft')),
       h('div', { class: `actions count-${Math.min(actions.length, 5)}` }, ...actions.map((a, i) => this.button(a.label, a.code, i === 0 ? 'action primary' : 'action'))),
     );
   }
