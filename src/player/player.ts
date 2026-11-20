@@ -2,6 +2,7 @@ import { type JarFile, listMidlets, readJar } from '../jar/jar';
 import { Jvm } from '../jvm/jvm';
 import { allNatives } from '../jvm/natives';
 import { decodePng, isPng } from '../gfx/png';
+import { prewarmImages } from '../gfx/jpeg';
 import type { KeyEventKind } from '../platform/display';
 import { type LogLevel, Platform } from '../platform/platform';
 import { type ScreenSize, detectScreenSize } from './detect';
@@ -60,6 +61,8 @@ export class GamePlayer {
   readonly platform: Platform;
   private readonly midletClass: string;
   private readonly screenCtx: CanvasRenderingContext2D;
+  /** Throttled log function built in the constructor; reused by async flows. */
+  private readonly log: (level: LogLevel, message: string) => void;
 
   constructor(bytes: Uint8Array, fileName: string, callbacks: PlayerCallbacks = {}) {
     this.jar = readJar(bytes);
@@ -79,10 +82,36 @@ export class GamePlayer {
     this.screenCtx.fillStyle = '#000';
     this.screenCtx.fillRect(0, 0, width, height);
 
+    // Log throttling: when a game hits a missing API, the JVM re-throws the same
+    // exception on every repaint (measured: 10k+ lines/sec with a sound-enabled
+    // game). Without this, console + onLog callbacks get flooded and the main
+    // thread stalls.
+    //
+    // Same (level, message): first 3 occurrences are printed, then one summary
+    // every 1000, capped at 5 summaries, after which the line is silenced
+    // (count is still recorded). Output volume is hard-bounded.
+    const REPEAT_LIMIT = 3;
+    const REPEAT_EVERY = 1000;
+    const REPEAT_SUMMARIES = 5;
+    const seen = new Map<string, { n: number; summaries: number }>();
     const log = (level: LogLevel, message: string) => {
-      (level === 'error' ? console.error : level === 'warn' ? console.warn : console.log)(`[j2me] ${message}`);
-      callbacks.onLog?.(level, message);
+      const key = `${level}|${message}`;
+      const rec = seen.get(key);
+      if (rec === undefined) {
+        seen.set(key, { n: 1, summaries: 0 });
+      } else {
+        rec.n += 1;
+        if (rec.n > REPEAT_LIMIT && rec.n % REPEAT_EVERY !== 0) {
+          if (rec.summaries >= REPEAT_SUMMARIES) return;
+          rec.summaries += 1;
+        }
+      }
+      const n = rec ? rec.n : 1;
+      const suffix = n <= REPEAT_LIMIT ? '' : ` (x${n})`;
+      (level === 'error' ? console.error : level === 'warn' ? console.warn : console.log)(`[j2me] ${message}${suffix}`);
+      callbacks.onLog?.(level, message + suffix);
     };
+    this.log = log;
 
     this.platform = new Platform({
       width,
@@ -104,6 +133,28 @@ export class GamePlayer {
     });
     this.jvm = new Jvm({ log, onHalt: (reason, message) => callbacks.onHalt?.(reason, message) }, this.jar.entries, allNatives);
     this.platform.attach(this.jvm);
+  }
+
+  /**
+   * Pre-decode every JPEG in the jar before the MIDlet boots.
+   *
+   * Browser JPEG decoding is async while MIDP's `Image.createImage(InputStream)`
+   * is sync, so pixels must be ready before the MIDlet runs; at runtime
+   * `createImage` just looks the cache up (see gfx/jpeg.ts). For a jar with no
+   * JPEGs this is a no-op.
+   */
+  async prepareImages(): Promise<{ decoded: number; failed: number; total: number }> {
+    const result = await prewarmImages(this.jar.entries, (done, total, name) => {
+      if (total > 8 && done % 8 !== 0 && done !== total) return;
+      this.log('info', `Pre-decoding JPEG ${done}/${total}: ${name.split('/').pop()}`);
+    });
+    if (result.total > 0) {
+      this.log(
+        'info',
+        `JPEG pre-decode done: ${result.decoded}/${result.total} ok${result.failed ? `, ${result.failed} failed` : ''}`,
+      );
+    }
+    return result;
   }
 
   start(): void {

@@ -1,5 +1,6 @@
 import type { JarFile } from '../jar/jar';
 import { isPng } from '../gfx/png';
+import { isJpeg, jpegSize } from '../gfx/jpeg';
 
 export interface ScreenSize {
   width: number;
@@ -30,9 +31,15 @@ export function detectScreenSize(jar: JarFile, fileName = ''): ScreenSize {
 
   const widths = new Map<number, number>();
   for (const [path, bytes] of jar.entries) {
-    if (!path.toLowerCase().endsWith('.png') || !isPng(bytes) || bytes.length < 24) continue;
-    const w = (bytes[16] << 24) | (bytes[17] << 16) | (bytes[18] << 8) | bytes[19];
-    if (HEIGHT_FOR_WIDTH[w]) widths.set(w, (widths.get(w) ?? 0) + 1);
+    const lower = path.toLowerCase();
+    let w = 0;
+    if (lower.endsWith('.png') && isPng(bytes) && bytes.length >= 24) {
+      w = (bytes[16] << 24) | (bytes[17] << 16) | (bytes[18] << 8) | bytes[19];
+    } else if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {
+      const size = isJpeg(bytes) ? jpegSize(bytes) : null;
+      if (size) w = size.width;
+    }
+    if (w && HEIGHT_FOR_WIDTH[w]) widths.set(w, (widths.get(w) ?? 0) + 1);
   }
   const best = [...widths.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0];
   if (best) {

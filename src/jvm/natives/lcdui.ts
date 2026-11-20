@@ -1,4 +1,5 @@
 import { decodePng, isPng } from '../../gfx/png';
+import { cachedJpeg, fingerprint, isGif, isJpeg, jpegSize } from '../../gfx/jpeg';
 import type { DisplayService } from '../../platform/display';
 import { FontPeer } from '../../platform/font';
 import { GraphicsPeer, ImagePeer } from '../../platform/graphics';
@@ -313,13 +314,35 @@ const graphicsClass: NativeClassDef = {
 // Image
 
 function decodeImage(jvm: Jvm, bytes: Uint8Array): ImagePeer {
-  if (!isPng(bytes)) throw jvm.throwable('java/lang/IllegalArgumentException', 'Unsupported image format (only PNG for now)');
-  try {
-    const img = decodePng(bytes);
-    return new ImagePeer(surfaceFromPixels(img.width, img.height, img.data), false);
-  } catch (e) {
-    throw jvm.throwable('java/lang/IllegalArgumentException', `Bad image data: ${e instanceof Error ? e.message : e}`);
+  if (isPng(bytes)) {
+    try {
+      const img = decodePng(bytes);
+      return new ImagePeer(surfaceFromPixels(img.width, img.height, img.data), false);
+    } catch (e) {
+      throw jvm.throwable('java/lang/IllegalArgumentException', `Bad image data: ${e instanceof Error ? e.message : e}`);
+    }
   }
+  if (isJpeg(bytes)) {
+    // Pixels must come from the pre-decode cache (browser JPEG decoding is async,
+    // but createImage is a sync API; see gfx/jpeg.ts for the design notes).
+    const cached = cachedJpeg(bytes);
+    if (cached) return new ImagePeer(surfaceFromPixels(cached.width, cached.height, cached.data), false);
+    const size = jpegSize(bytes);
+    const note = size ? `${size.width}x${size.height}` : 'unknown size';
+    // Size known but pixels not decoded: hand back a same-size blank image so the
+    // game keeps running (throwing here makes the game fail to start, which is
+    // worse than a blank image).
+    jvm.host.log('warn', `JPEG not pre-decoded (${note}), serving blank: ${fingerprint(bytes)}`);
+    if (size) return new ImagePeer(createSurface(size.width, size.height, '#ffffff'), false);
+    throw jvm.throwable('java/lang/IllegalArgumentException', 'Cannot decode JPEG');
+  }
+  throw jvm.throwable('java/lang/IllegalArgumentException', unsupportedImageFormat(bytes));
+}
+
+/** Tell the developer which format is actually missing instead of a generic "PNG only". */
+function unsupportedImageFormat(bytes: Uint8Array): string {
+  if (isGif(bytes)) return 'Unsupported image format: GIF (only PNG and JPEG)';
+  return 'Unsupported image format (only PNG and JPEG)';
 }
 
 function newImage(jvm: Jvm, peer: ImagePeer): JObject {
