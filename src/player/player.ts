@@ -2,6 +2,7 @@ import { type JarFile, listMidlets, readJar } from '../jar/jar';
 import { Jvm } from '../jvm/jvm';
 import { allNatives } from '../jvm/natives';
 import { decodePng, isPng } from '../gfx/png';
+import { prewarmImages } from '../gfx/jpeg';
 import type { KeyEventKind } from '../platform/display';
 import { type LogLevel, Platform } from '../platform/platform';
 import { type ScreenSize, detectScreenSize } from './detect';
@@ -108,6 +109,19 @@ export class GamePlayer {
 
   start(): void {
     this.jvm.startMidlet(this.midletClass);
+  }
+
+  /**
+   * Pre-decode all JPEG resources in the JAR into the async cache so
+   * that Image.createImage(InputStream) can return pixels synchronously
+   * on first use. No-op for JARs without JPEG.
+   */
+  async prepareImages(): Promise<{ decoded: number; failed: number; total: number }> {
+    const result = await prewarmImages(this.jar.entries);
+    if (result.total > 0) {
+      console.log(`[j2me] JPEG pre-decoded: ${result.decoded}/${result.total}`);
+    }
+    return result;
   }
 
   stop(): void {

@@ -1,4 +1,5 @@
 import { decodePng, isPng } from '../../gfx/png';
+import { cachedJpeg, fingerprint, isGif, isJpeg, jpegSize } from '../../gfx/jpeg';
 import type { DisplayService } from '../../platform/display';
 import { FontPeer } from '../../platform/font';
 import { GraphicsPeer, ImagePeer } from '../../platform/graphics';
@@ -313,7 +314,16 @@ const graphicsClass: NativeClassDef = {
 // Image
 
 function decodeImage(jvm: Jvm, bytes: Uint8Array): ImagePeer {
-  if (!isPng(bytes)) throw jvm.throwable('java/lang/IllegalArgumentException', 'Unsupported image format (only PNG for now)');
+  if (isJpeg(bytes)) {
+    const cached = cachedJpeg(bytes);
+    if (cached) return new ImagePeer(surfaceFromPixels(cached.width, cached.height, cached.data), false);
+    const size = jpegSize(bytes);
+    const note = size ? `${size.width}x${size.height}` : 'unknown size';
+    jvm.host.log('warn', `JPEG not pre-decoded (${note}); returning blank image: ${fingerprint(bytes)}`);
+    return new ImagePeer(createSurface(size?.width ?? 0, size?.height ?? 0, '#000000'), false);
+  }
+  if (isGif(bytes)) throw jvm.throwable('java/lang/IllegalArgumentException', 'Unsupported image format: GIF (only PNG and JPEG)');
+  if (!isPng(bytes)) throw jvm.throwable('java/lang/IllegalArgumentException', 'Unsupported image format (only PNG and JPEG)');
   try {
     const img = decodePng(bytes);
     return new ImagePeer(surfaceFromPixels(img.width, img.height, img.data), false);

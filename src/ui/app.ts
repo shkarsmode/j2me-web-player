@@ -231,7 +231,7 @@ export class App {
     this.teardown.push(() => touch.destroy(), () => gamepad.destroy());
     this.attachKeyboard(player, input);
     this.attachScaling(player, stage);
-    player.start();
+    void player.prepareImages().then(() => player.start());
   }
 
   private stopPlayer(): void {
